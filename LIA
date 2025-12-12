@@ -1,461 +1,474 @@
-#include <Adafruit_NeoPixel.h> // RBG library
-#define LED_PIN 4  //Neopixel pin
-#define LED_COUNT 1 //1 rgb led
-Adafruit_NeoPixel rgb(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+#include <Adafruit_NeoPixel.h> // Include the NeoPixel library for controlling RGB LEDs
+#define LED_PIN 4  // Define the pin connected to the NeoPixel
+#define LED_COUNT 1 // Define number of RGB LEDs
+Adafruit_NeoPixel rgb(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800); // Create NeoPixel object with color order and frequency
 
+#include <IRremote.h>   // Include the IR remote library
 
-#include <IRremote.h>   //Ir remote library
+#include <Servo.h> // Include the Servo library
+Servo myServo; // Create Servo object
+int pos = 90; // Default servo position
 
-#include <Servo.h> // Servo library
-Servo myServo;
-int pos = 90; // default servo position
-enum currentState{ // enum state for servo
-  Sforward,
-  Sleft,
-  Sright,
-  Sbackward
+enum currentState{ // Enum to represent the servo scanning states
+  Sforward,  // Scanning forward
+  Sleft,     // Scanning left
+  Sright,    // Scanning right
+  Sbackward  // Scanning backward
 };
-currentState  state = Sforward;
-float duration, distance; //variables
+currentState  state = Sforward; // Initialize state to forward
+float duration, distance; // Variables for ultrasonic sensor measurements
 
-enum Mode { //enum state for ir robot mode
-LINE, 
-IR,
-OBSTACLE,
-IDLE,
-VICTORY 
- };
-Mode currentMode = IDLE;
+enum Mode { // Enum to represent robot operation modes
+  LINE,       // Line tracking mode
+  IR,         // IR remote control mode
+  OBSTACLE,   // Obstacle avoidance mode
+  IDLE,       // Idle mode
+  VICTORY     // Victory mode
+};
+Mode currentMode = IDLE; // Start in idle mode
 
-enum Direction { //enum state for ir movement directions
-STOPPED, 
-FORWARD,
-BACKWARD,
-LEFT,
- RIGHT
- };
-Direction keepDirection = STOPPED;
+enum Direction { // Enum for IR movement directions
+  STOPPED, 
+  FORWARD, 
+  BACKWARD, 
+  LEFT, 
+  RIGHT
+};
+Direction keepDirection = STOPPED; // Track current direction for IR mode
 
-#define echoPin 12// define echo pin
-#define trigPin 13//define trig pin
-#define servoPin 10 // define servo pin
+#define echoPin 12 // Define ultrasonic sensor echo pin
+#define trigPin 13 // Define ultrasonic sensor trigger pin
+#define servoPin 10 // Define servo control pin
 
-const int IR_RECEIVE_PIN = 9; // Define the pin connected to the IR receiver   
+const int IR_RECEIVE_PIN = 9; // Pin connected to IR receiver
 
-const int AIN1 = 8;  // motor pin 
-const int PWMA = 5;   
-const int BIN1 = 7;    
-const int PWMB = 6;    
-const int STBY = 3;    
+const int AIN1 = 8;  // Motor A control pin
+const int PWMA = 5;  // Motor A PWM speed pin
+const int BIN1 = 7;  // Motor B control pin
+const int PWMB = 6;  // Motor B PWM speed pin
+const int STBY = 3;  // Motor standby pin
 
-const int L = A2; // sensor pins left
-const int M = A1;// sensor pin mid
-const int R = A0;// sensor pin right
+const int L = A2; // Left line sensor pin
+const int M = A1; // Middle line sensor pin
+const int R = A0; // Right line sensor pin
 
-#define IR_UP  0xB946FF00  // remote button values
+// IR remote button values
+#define IR_UP  0xB946FF00  
 #define IR_DOWN 0xEA15FF00 
 #define IR_LEFT 0xBB44FF00  
 #define IR_RIGHT 0xBC43FF00 
-#define IR_SPEED_DOWN 0XBD42FF00 // BUTTON * 
-#define IR_SPEED_UP 0XB54AFF00 //BUTTON # 
-#define IR_1       0xE916FF00 // button 1
-#define IR_2       0xE619FF00 // button 2
-#define IR_3       0xF20DFF00//button 3
-#define IR_4       0xF30CFF00// button 4
-#define IR_5       0xE718FF00//button 5
-unsigned long variable = 0;
+#define IR_SPEED_DOWN 0XBD42FF00 // Button * 
+#define IR_SPEED_UP 0XB54AFF00   // Button # 
+#define IR_1       0xE916FF00 // Button 1
+#define IR_2       0xE619FF00 // Button 2
+#define IR_3       0xF20DFF00 // Button 3
+#define IR_4       0xF30CFF00 // Button 4
+#define IR_5       0xE718FF00 // Button 5
 
-int irSpeed = 100;//speed for ir mode
-int lineSpeed = 60; // speed for line tracking mode
-int obstacleSpeed = 100;  // speed for obstacle avoidance mode
- 
+unsigned long variable = 0; // Stores the received IR code
+
+int irSpeed = 100;       // Default speed for IR mode
+int lineSpeed = 60;      // Speed for line tracking mode
+int obstacleSpeed = 100; // Speed for obstacle avoidance mode
+
 
 void setup() {   
-   rgb.begin();
-rgb.show();        // Turns LED off initially
-rgb.setBrightness(50);  // 0–255 (keep it low) 
+   rgb.begin();                // Initialize the NeoPixel library
+   rgb.show();                 // Turn off LED initially
+   rgb.setBrightness(50);      // Set LED brightness (0-255)
 
-  myServo.attach(servoPin);
-  myServo.write(pos);
-  Serial.begin(9600);
+   myServo.attach(servoPin);   // Attach servo to pin
+   myServo.write(pos);         // Move servo to default position
+   Serial.begin(9600);         // Start serial communication
 
- pinMode(echoPin, INPUT);
-  pinMode(trigPin, OUTPUT);
+   pinMode(echoPin, INPUT);    // Set ultrasonic echo pin as input
+   pinMode(trigPin, OUTPUT);   // Set ultrasonic trigger pin as output
 
-myServo.write(90);
+   myServo.write(90);          // Ensure servo starts at 90 degrees
 
-  pinMode(8,OUTPUT);    
-  pinMode(5,OUTPUT);    
-  pinMode(7,OUTPUT);    
-  pinMode(6,OUTPUT);    
-  pinMode(3,OUTPUT);     
+   pinMode(AIN1, OUTPUT);      // Set motor pins as outputs
+   pinMode(PWMA, OUTPUT);    
+   pinMode(BIN1, OUTPUT);    
+   pinMode(PWMB, OUTPUT);    
+   pinMode(STBY, OUTPUT);     
 
-  digitalWrite(3,HIGH);    
- 
-   
-IrReceiver.begin(IR_RECEIVE_PIN, ENABLE_LED_FEEDBACK);
+   digitalWrite(STBY, HIGH);   // Enable motor driver
+
+   IrReceiver.begin(IR_RECEIVE_PIN, ENABLE_LED_FEEDBACK); // Initialize IR receiver
 }
+
 
 void loop() {
-if (IrReceiver.decode()) {
-    if (!(IrReceiver.decodedIRData.flags & IRDATA_FLAGS_IS_REPEAT)) {
-      variable = IrReceiver.decodedIRData.decodedRawData;
-    }
-    IrReceiver.resume();
+  if (IrReceiver.decode()) { // Check if IR signal is received
+      if (!(IrReceiver.decodedIRData.flags & IRDATA_FLAGS_IS_REPEAT)) { 
+          variable = IrReceiver.decodedIRData.decodedRawData; // Store IR code
+      }
+      IrReceiver.resume(); // Prepare to receive the next IR code
   }
 
-if (variable == IR_1) {
-  stop();
-  currentMode = VICTORY;
-  variable = 0;
-}
-else if (variable == IR_2) { 
-stop();
- currentMode = LINE; 
-variable = 0; 
-}
-else if (variable == IR_3) { 
-stop(); 
-currentMode = IR;
- variable = 0;
- }
-else if (variable == IR_4) {
- stop();
-currentMode = OBSTACLE;
- variable = 0;
- }
- else if (variable == IR_5){
-  stop();
-  currentMode = IDLE;
-  variable=0;
- }
+  if (variable == IR_1) { // IR Button 1 pressed
+      stop(); 
+      currentMode = VICTORY; 
+      variable = 0;
+  } 
+  else if (variable == IR_2) { // IR Button 2 pressed
+      stop(); 
+      currentMode = LINE; 
+      variable = 0; 
+  } 
+  else if (variable == IR_3) { // IR Button 3 pressed
+      stop(); 
+      currentMode = IR; 
+      variable = 0;
+  } 
+  else if (variable == IR_4) { // IR Button 4 pressed
+      stop(); 
+      currentMode = OBSTACLE; 
+      variable = 0;
+  } 
+  else if (variable == IR_5) { // IR Button 5 pressed
+      stop(); 
+      currentMode = IDLE; 
+      variable = 0;
+  }
 
-switch(currentMode) {
-  case VICTORY:
-rgb.setPixelColor(0, rgb.Color(128, 0, 128));
-rgb.show();
-  victoryLap();
-  break;
+  switch(currentMode) { // Execute code depending on current mode
+      case VICTORY:
+          rgb.setPixelColor(0, rgb.Color(128, 0, 128)); // Set LED purple
+          rgb.show();
+          victoryLap();
+          break;
 
-case LINE:
-rgb.setPixelColor(0, rgb.Color(0, 255, 0));
-rgb.show();
-lineTracking();
-break;
+      case LINE:
+          rgb.setPixelColor(0, rgb.Color(0, 255, 0)); // Set LED green
+          rgb.show();
+          lineTracking();
+          break;
 
-case IR:
-rgb.setPixelColor(0, rgb.Color(0,0,255));
-rgb.show();
- irRemote(); 
-break;
-case OBSTACLE:
-rgb.setPixelColor(0, rgb.Color(255, 255, 0));
-rgb.show();
-objectAvoidance();
- break;
-case IDLE:
-rgb.setPixelColor(0, rgb.Color(255, 0, 0));
-rgb.show();
- stop(); 
-break;
+      case IR:
+          rgb.setPixelColor(0, rgb.Color(0,0,255)); // Set LED blue
+          rgb.show();
+          irRemote(); 
+          break;
+
+      case OBSTACLE:
+          rgb.setPixelColor(0, rgb.Color(255, 255, 0)); // Set LED yellow
+          rgb.show();
+          objectAvoidance();
+          break;
+
+      case IDLE:
+          rgb.setPixelColor(0, rgb.Color(255, 0, 0)); // Set LED red
+          rgb.show();
+          stop(); 
+          break;
+  }
 }
-}
 
-void objectAvoidance() {
+
+void objectAvoidance() { // Obstacle avoidance routine
   switch(state) {
-  case Sforward:
- myServo.write(90);       // look forward
-  distance = readDistance();
-  delay(200);
-  if(distance > 25){
- forward(obstacleSpeed);
-} else {
-stop();
- state = Sleft;         // start scanning left
- }
- break;
+      case Sforward: 
+          myServo.write(90);       // Look forward
+          distance = readDistance(); // Measure distance
+          delay(200);
+          if(distance > 25){ 
+              forward(obstacleSpeed); // Move forward if clear
+          } else {
+              stop();
+              state = Sleft; // Start scanning left
+          }
+          break;
 
- case Sleft:
- myServo.write(180);        // look left
- delay(300);              // wait for servo
-  distance = readDistance();
-if(distance > 25){
- left(obstacleSpeed);
- delay(260);
- state = Sforward;
-} else {
-state = Sright;        // scan right if left blocked
- }
-break;
+      case Sleft:
+          myServo.write(180); // Look left
+          delay(300);         // Wait for servo to move
+          distance = readDistance(); // Measure distance
+          if(distance > 25){ 
+              left(obstacleSpeed); // Turn left if clear
+              delay(260);
+              state = Sforward; // Resume forward scanning
+          } else {
+              state = Sright; // Scan right if left blocked
+          }
+          break;
 
-  case Sright:
-myServo.write(0);      // look right
-delay(300);
- distance = readDistance();
- if(distance > 25){
-  myServo.write(90);
-  delay(300);
-right(obstacleSpeed);
- delay(260);
- state = Sforward;
-} else {
- state = Sbackward;     // both sides blocked, go backward
-}
- break;
+      case Sright:
+          myServo.write(0); // Look right
+          delay(300);
+          distance = readDistance();
+          if(distance > 25){ 
+              myServo.write(90); 
+              delay(300);
+              right(obstacleSpeed); // Turn right if clear
+              delay(260);
+              state = Sforward; // Resume forward scanning
+          } else {
+              state = Sbackward; // Both sides blocked, go backward
+          }
+          break;
 
-case Sbackward:
-delay(500);
-myServo.write(90);
-delay(300);
- backward(obstacleSpeed);
- delay(600);
- left(obstacleSpeed);          // turn a bit after moving backward
- delay(900);
- state = Sforward;
-break;
-}
-
-
-
-}
-float readDistance(){
-  digitalWrite(trigPin,LOW); 
-  delayMicroseconds(2); // not particularily critical, just want to start off in a low state 
-  digitalWrite(trigPin, HIGH); 
-  delayMicroseconds(10); 
-  digitalWrite(trigPin,LOW);  // put your main code here, to run repeatedly: 
-   // mesure the response we get back 
-duration = pulseIn(echoPin, HIGH); 
-//Calculate using the speed of sound 
-//use 343 metres per second as speed of sound 
-distance = (duration / 2) * 0.0343; 
-return distance;
-
-}
-
-
-void lineTracking(){
-int L2 = analogRead(L);
-int M1 = analogRead(M);
-int R0 = analogRead(R);
-Serial.println(analogRead(M));
-
-if(L2 >= 900 && M1 >= 900 && R0 >= 900){//stop when in the air
-  stop();
-}
- else if (M1 >=580 ){
- forward(lineSpeed);
- }
-
-else if(L2 >= 580){ 
-  left(lineSpeed);
-}
-else if (R0 >= 580){
-  right(lineSpeed);
-}
-
-else {
-  left(lineSpeed);
-}
-}
-
-
-
-void irRemote(){
-   if (variable == 0) return;
-
-  switch(variable) {
-    case IR_UP:
-      forward(irSpeed);
-      keepDirection = FORWARD;
-      break;
-
-    case IR_DOWN:
-      backward(irSpeed);
-      keepDirection = BACKWARD;
-      break;
-
-    case IR_LEFT:
-      left(irSpeed);
-      keepDirection = LEFT;
-      break;
-
-    case IR_RIGHT:
-      right(irSpeed);
-      keepDirection = RIGHT;
-      break;
-
-    case IR_SPEED_DOWN:
-      irSpeed -= 20;
-      if(irSpeed < 0) irSpeed = 0;
-      // Apply new speed in the **current direction**, but only if moving
-      if (keepDirection != STOPPED) applykeepDirection();
-      break;
-
-    case IR_SPEED_UP:
-      irSpeed += 20;
-      if(irSpeed > 225) irSpeed = 225;
-      if (keepDirection != STOPPED) applykeepDirection();
-      break;
-
-    default:
-      break;
-  }
-
-  variable = 0; // Reset after reading
-
-} 
-
- 
- 
-
-void forward(int speedVal){    
-digitalWrite(AIN1,1);//MOTOR A ON    
-digitalWrite(BIN1,1);//MOTOR B ON   
-analogWrite(PWMA,speedVal);//MOTOR A SET SPEED    
-analogWrite(PWMB,speedVal);//MOTOR B SET SPEED    
-}   
-
-
-
-void stop(){    
-digitalWrite(AIN1,LOW);   
-digitalWrite(BIN1,LOW);    
-analogWrite(PWMA,0);    
-analogWrite(PWMB,0);    
-}   
-
- 
- 
-
-void backward(int speedVal){   
- digitalWrite(AIN1,0);   
-digitalWrite(BIN1,0);   
-analogWrite(PWMA,speedVal);   
-analogWrite(PWMB,speedVal);   
-}   
-
-void right(int speedVal){   
-digitalWrite(AIN1,1);   
-digitalWrite(BIN1,0);   
-analogWrite(PWMA,speedVal);   
-analogWrite(PWMB,speedVal);   
-}   
-
-
-void left(int speedVal){   
-digitalWrite(AIN1,0);   
-digitalWrite(BIN1,1);   
-analogWrite(PWMA,speedVal);                                                            
-analogWrite(PWMB,speedVal);   
-}   
-
- 
- 
-
-void Fleft(int speedVal){//left forward   
-digitalWrite(AIN1,1);   
-digitalWrite(BIN1,1);   
-analogWrite(PWMA,speedVal);   
-analogWrite(PWMB,speedVal);   
-}   
-
-void Bleft(int speedVal){//lef backwards   
-digitalWrite(AIN1,0);   
-digitalWrite(BIN1,0);   
-analogWrite(PWMA,speedVal);   
-analogWrite(PWMB,speedVal/2);   
-}   
-
-void Fright(int speedVal){//forward right   
-digitalWrite(AIN1,1); 
-digitalWrite(BIN1,1);   
-analogWrite(PWMA,speedVal/2);   
-analogWrite(PWMB,speedVal);   
-}   
-
- void sharpLeft(int sp){
-  analogWrite(PWMA, 0);   // stop left wheel
-  analogWrite(PWMB, sp);  // right wheel full speed
- digitalWrite(AIN1, LOW);    // left motor stopped
-  digitalWrite(BIN1, HIGH); 
- }
- 
-
-
-void sharpRight(int sp){
-  analogWrite(PWMA, sp);  // left wheel full speed
-  analogWrite(PWMB, 0); 
-  
-}
-
-
-void Bright(int speedVal){//backward right   
-  digitalWrite(AIN1,0);   
-digitalWrite(BIN1,0);   
-analogWrite(PWMA,speedVal/2);   
-analogWrite(PWMB,speedVal);   
-}   
-
-
-
-void applykeepDirection(){ 
-switch(keepDirection){
-case FORWARD: 
-forward(irSpeed);
- break;
-
-case BACKWARD:
- backward(irSpeed);
-  break;
-
-case LEFT:
- left(irSpeed); 
- break;
-
-case RIGHT:
- right(irSpeed);
-  break;
-
-default:
-  break;
+      case Sbackward:
+          delay(500);
+          myServo.write(90); 
+          delay(300);
+          backward(obstacleSpeed); // Move backward
+          delay(600);
+          left(obstacleSpeed); // Turn slightly after moving back
+          delay(900);
+          state = Sforward; // Resume forward scanning
+          break;
   }
 }
+float readDistance() {  
+
+    digitalWrite(trigPin, LOW);      // Set trig pin LOW to ensure a clean pulse
+    delayMicroseconds(2);            // Wait 2 microseconds for stability
+
+    digitalWrite(trigPin, HIGH);     // Send a 10us HIGH pulse to trigger the ultrasonic sensor
+    delayMicroseconds(10);           // Keep the trig HIGH for 10 microseconds
+
+    digitalWrite(trigPin, LOW);      // Stop sending the pulse
+
+    duration = pulseIn(echoPin, HIGH);   // Measure the time until echo pin goes HIGH
+    distance = (duration / 2) * 0.0343;  // Calculate distance in cm using speed of sound
+
+    return distance;                 // Return the measured distance
+}
 
 
+void lineTracking() {  
+
+    int L2 = analogRead(L);          // Read left line sensor value
+    int M1 = analogRead(M);          // Read middle line sensor value
+    int R0 = analogRead(R);          // Read right line sensor value
+
+    Serial.println(analogRead(M));   // Print middle sensor value for debugging
+
+    if(L2 >= 900 && M1 >= 900 && R0 >= 900) {  
+        stop();                      // Stop if all sensors are off the line (in the air)
+    } 
+    else if(M1 >= 580) {  
+        forward(lineSpeed);           // Go forward if middle sensor detects the line
+    } 
+    else if(L2 >= 580) {  
+        left(lineSpeed);              // Turn left if left sensor detects the line
+    } 
+    else if(R0 >= 580) {  
+        right(lineSpeed);             // Turn right if right sensor detects the line
+    } 
+    else {  
+        left(lineSpeed);              // Default small left turn if no sensors detect the line
+    }
+}
 
 
-void victoryLap(){
-forward(200);  
-delay(4300);  
-stop();  
-delay(1000);  
-right(100);  
-delay(500);  
-stop();  
-delay(1000);  
-forward(200);  
-delay(2500);  
-stop();  
-delay(1000);  
-right(100);  
-delay(500);  
-stop();  
-delay(1000);  
-forward(200);  
-delay(4300);  
-stop();  
-delay(1000);  
-right(100);  
-delay(500);  
-stop();  
-delay(1000);  
-forward(200);  
-delay(2500);  
-stop();  
-delay(1000);  
-right(100);  
-delay(500);  
-stop();  
-delay(1000);  
+void irRemote() {  
+
+    if(variable == 0) return;        // If no button pressed, exit
+
+    switch(variable) {               // Check which IR button was pressed
+
+        case IR_UP:    
+            forward(irSpeed);         // Move forward at IR speed
+            keepDirection = FORWARD;  // Remember the current direction
+            break;
+
+        case IR_DOWN:    
+            backward(irSpeed);        // Move backward at IR speed
+            keepDirection = BACKWARD; // Remember the current direction
+            break;
+
+        case IR_LEFT:    
+            left(irSpeed);            // Turn left at IR speed
+            keepDirection = LEFT;     // Remember the current direction
+            break;
+
+        case IR_RIGHT:    
+            right(irSpeed);           // Turn right at IR speed
+            keepDirection = RIGHT;    // Remember the current direction
+            break;
+
+        case IR_SPEED_DOWN:    
+            irSpeed -= 20;            // Decrease speed by 20
+            if(irSpeed < 0) irSpeed = 0;  // Limit minimum speed to 0
+            if(keepDirection != STOPPED) applykeepDirection();  // Apply new speed in current direction
+            break;
+
+        case IR_SPEED_UP:    
+            irSpeed += 20;            // Increase speed by 20
+            if(irSpeed > 225) irSpeed = 225; // Limit maximum speed
+            if(keepDirection != STOPPED) applykeepDirection();  // Apply new speed in current direction
+            break;
+
+        default:    
+            break;                    // Do nothing for unhandled buttons
+    }
+
+    variable = 0;                     // Reset variable after handling
+}
+
+
+void forward(int speedVal) {  
+
+    digitalWrite(AIN1, 1);           // Turn on Motor A forward
+    digitalWrite(BIN1, 1);           // Turn on Motor B forward
+    analogWrite(PWMA, speedVal);     // Set Motor A speed
+    analogWrite(PWMB, speedVal);     // Set Motor B speed
+}
+
+
+void stop() {  
+
+    digitalWrite(AIN1, LOW);         // Stop Motor A
+    digitalWrite(BIN1, LOW);         // Stop Motor B
+    analogWrite(PWMA, 0);            // Set Motor A speed to 0
+    analogWrite(PWMB, 0);            // Set Motor B speed to 0
+}
+
+
+void backward(int speedVal) {  
+
+    digitalWrite(AIN1, 0);           // Reverse Motor A
+    digitalWrite(BIN1, 0);           // Reverse Motor B
+    analogWrite(PWMA, speedVal);     // Set Motor A speed
+    analogWrite(PWMB, speedVal);     // Set Motor B speed
+}
+
+
+void right(int speedVal) {  
+
+    digitalWrite(AIN1, 1);           // Motor A forward
+    digitalWrite(BIN1, 0);           // Motor B stop (or backward)
+    analogWrite(PWMA, speedVal);     // Set Motor A speed
+    analogWrite(PWMB, speedVal);     // Set Motor B speed
+}
+
+
+void left(int speedVal) {  
+
+    digitalWrite(AIN1, 0);           // Motor A stop (or backward)
+    digitalWrite(BIN1, 1);           // Motor B forward
+    analogWrite(PWMA, speedVal);     // Set Motor A speed
+    analogWrite(PWMB, speedVal);     // Set Motor B speed
+}
+
+
+void Fleft(int speedVal) {  // Forward left  
+
+    digitalWrite(AIN1, 1);           // Motor A forward
+    digitalWrite(BIN1, 1);           // Motor B forward
+    analogWrite(PWMA, speedVal);     // Set Motor A speed
+    analogWrite(PWMB, speedVal);     // Set Motor B speed
+}
+
+
+void Bleft(int speedVal) {  // Backward left  
+
+    digitalWrite(AIN1, 0);           // Motor A backward
+    digitalWrite(BIN1, 0);           // Motor B backward
+    analogWrite(PWMA, speedVal);     // Set Motor A speed
+    analogWrite(PWMB, speedVal / 2); // Reduce Motor B speed for turning
+}
+
+
+void Fright(int speedVal) {  // Forward right  
+
+    digitalWrite(AIN1, 1);           // Motor A forward
+    digitalWrite(BIN1, 1);           // Motor B forward
+    analogWrite(PWMA, speedVal / 2); // Reduce Motor A speed for turning
+    analogWrite(PWMB, speedVal);     // Full speed Motor B
+}
+
+
+void sharpLeft(int sp) {  
+
+    analogWrite(PWMA, 0);            // Stop left wheel
+    analogWrite(PWMB, sp);           // Right wheel full speed
+    digitalWrite(AIN1, LOW);         // Left motor stopped
+    digitalWrite(BIN1, HIGH);        // Right motor forward
+}
+
+
+void sharpRight(int sp) {  
+
+    analogWrite(PWMA, sp);           // Left wheel full speed
+    analogWrite(PWMB, 0);            // Stop right wheel
+}
+void Bright(int speedVal) {  // Move robot backward-right
+
+    digitalWrite(AIN1, 0);          // Set Motor A backward
+    digitalWrite(BIN1, 0);          // Set Motor B backward
+    analogWrite(PWMA, speedVal / 2); // Set Motor A speed to half (slower for turning)
+    analogWrite(PWMB, speedVal);    // Set Motor B speed to full (faster for turning)
+}
+
+
+void applykeepDirection() {  // Apply current IR direction movement
+
+    switch(keepDirection) {          // Check the last direction command
+
+        case FORWARD:  
+            forward(irSpeed);        // Move forward at current IR speed
+            break;
+
+        case BACKWARD:  
+            backward(irSpeed);       // Move backward at current IR speed
+            break;
+
+        case LEFT:  
+            left(irSpeed);           // Turn left at current IR speed
+            break;
+
+        case RIGHT:  
+            right(irSpeed);          // Turn right at current IR speed
+            break;
+
+        default:  
+            break;                   // Do nothing if stopped
+    }
+}
+
+
+void victoryLap() {  
+
+    forward(200);                     // Move forward at speed 200
+    delay(4300);                      // Move forward for 4.3 seconds
+    stop();                           // Stop the robot
+    delay(1000);                      // Wait 1 second
+
+    right(100);                       // Turn right at speed 100
+    delay(500);                        // Turn for 0.5 seconds
+    stop();                           
+    delay(1000);                      // Wait 1 second
+
+    forward(200);                     // Move forward at speed 200
+    delay(2500);                      // Move forward for 2.5 seconds
+    stop();                           
+    delay(1000);                      // Wait 1 second
+
+    right(100);                       // Turn right at speed 100
+    delay(500);                        // Turn for 0.5 seconds
+    stop();                           
+    delay(1000);                      // Wait 1 second
+
+    forward(200);                     // Move forward at speed 200
+    delay(4300);                      // Move forward for 4.3 seconds
+    stop();                           
+    delay(1000);                      // Wait 1 second
+
+    right(100);                       // Turn right at speed 100
+    delay(500);                        // Turn for 0.5 seconds
+    stop();                           
+    delay(1000);                      // Wait 1 second
+
+    forward(200);                     // Move forward at speed 200
+    delay(2500);                      // Move forward for 2.5 seconds
+    stop();                           
+    delay(1000);                      // Wait 1 second
+
+    right(100);                       // Turn right at speed 100
+    delay(500);                        // Turn for 0.5 seconds
+    stop();                           
+    delay(1000);                      // Wait 1 second
 }
